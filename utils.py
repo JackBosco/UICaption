@@ -1,4 +1,5 @@
 # import statements
+import asyncio
 import time
 import io
 import os
@@ -62,6 +63,71 @@ def collect_web_urls(file_path):
         
     return list(urls)
 
+async def aextract_images(website_urls, folder_path):
+    """
+    This method goes over each url and extracts all the images and associated text and
+    creates 5 files:
+    1. image_urls.txt (contains image source urls for all the images extracted)
+    2. img_url_to_captions_new.csv (image urls and corresponding alt text)
+    3. img_url_to_text_above_new.csv (image urls and corresponding preceding text)
+    4. img_url_to_text_below_new.csv (image urls and corresponding succeeding text)
+    5. image_url_to_image_class_names_new.csv (image-urls and the correspinding img tag class name)
+    """
+    if not os.path.exists(folder_path):
+        os.mkdir(folder_path)
+
+    # scraping all web urls
+    logging.info("Processing all web_urls.")
+
+    # Extract images from the website urls
+    image_url_dict = {}
+    image_urls = []
+    image_alt_text = []
+    text_above = []
+    text_below = []
+    image_class_names = []
+    img_url_to_caption = {}
+    img_url_to_text_above = {}
+    img_url_to_text_below = {}
+    img_url_to_class_name = {}
+    web_url_cntr = 0
+    async def _async_helper(web_url):
+        webpage_image_urls, webpage_image_alt_text, webpage_text_above, webpage_text_below, webpage_image_class_names = fetch_images(web_url)
+        await asyncio.sleep(1)
+        # remove any duplicate images
+        idx = 0
+        for url in webpage_image_urls:
+            if url in image_url_dict:
+                idx += 1
+                continue
+            else:
+                image_url_dict[url] = 1
+                image_urls.append(url)
+                image_alt_text.append(webpage_image_alt_text[idx])
+                text_above.append(webpage_text_above[idx])
+                text_below.append(webpage_text_below[idx])
+                image_class_names.append(webpage_image_class_names[idx])
+
+                # Add to img_url dictionaries
+                img_url_to_caption[url] = webpage_image_alt_text[idx]
+                img_url_to_class_name[url] = webpage_image_class_names[idx]
+                img_url_to_text_above[url] = webpage_text_above[idx]
+                img_url_to_text_below[url] = webpage_text_below[idx]
+                idx += 1
+        logging.info(f"Scraped : {web_url}")
+    async with asyncio.TaskGroup() as tg:
+        for _url in website_urls:
+            tg.create_task(_async_helper(_url))
+
+    # Dump all image_urls
+    write_list(image_urls, os.path.join(folder_path, 'ui_images.p'))
+
+    # Write the image url dictionaries
+    write_dict(folder_path, img_url_to_caption, 'ui_alt_texts.csv', ['Image_Url', 'Image_Alt_Text'])
+    write_dict(folder_path, img_url_to_text_above, 'ui_instructions_preceding.csv', ['Image_Url', 'Text_Above'])
+    write_dict(folder_path, img_url_to_text_below, 'ui_instructions_succeeding.csv', ['Image_Url', 'Text_Below'])
+    # Classnames can be useful in filtering noisy images like ads etc.
+    write_dict(folder_path, img_url_to_class_name, 'ui_image_url_to_image_class_names.csv', ['Image_Url', 'Class_Name'])
 
 def extract_images(website_urls, folder_path):
     """
